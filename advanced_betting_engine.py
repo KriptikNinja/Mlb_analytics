@@ -41,17 +41,40 @@ class AdvancedBettingEngine:
         
         for game in games:
             try:
+                # Convert player_predictions format to expected structure
+                # player_predictions contains: {'home_players': [...], 'away_players': [...]}
+                formatted_predictions = {
+                    'home_team': {'batters': [], 'pitchers': []},
+                    'away_team': {'batters': [], 'pitchers': []}
+                }
+                
+                # Process home players
+                home_players = player_predictions.get('home_players', [])
+                for player in home_players:
+                    if player.get('player_type') == 'batter':
+                        formatted_predictions['home_team']['batters'].append(player)
+                    elif player.get('player_type') == 'pitcher':
+                        formatted_predictions['home_team']['pitchers'].append(player)
+                
+                # Process away players
+                away_players = player_predictions.get('away_players', [])
+                for player in away_players:
+                    if player.get('player_type') == 'batter':
+                        formatted_predictions['away_team']['batters'].append(player)
+                    elif player.get('player_type') == 'pitcher':
+                        formatted_predictions['away_team']['pitchers'].append(player)
+                
                 # Hot streak opportunities
-                hot_streak_opps = self._find_hot_streak_opportunities(game, player_predictions)
+                hot_streak_opps = self._find_hot_streak_opportunities(game, formatted_predictions)
                 
                 # Ballpark advantage opportunities
-                ballpark_opps = self._find_ballpark_advantages(game, player_predictions)
+                ballpark_opps = self._find_ballpark_advantages(game, formatted_predictions)
                 
                 # Matchup-specific edges
-                matchup_opps = self._find_matchup_edges(game, player_predictions)
+                matchup_opps = self._find_matchup_edges(game, formatted_predictions)
                 
                 # Weather-based opportunities
-                weather_opps = self._find_weather_opportunities(game, player_predictions)
+                weather_opps = self._find_weather_opportunities(game, formatted_predictions)
                 
                 # Combine all opportunities
                 all_game_opps = hot_streak_opps + ballpark_opps + matchup_opps + weather_opps
@@ -62,12 +85,15 @@ class AdvancedBettingEngine:
                     opp['betting_edge'] = self._calculate_betting_edge(opp)
                     opp['recommended_units'] = self._calculate_recommended_units(opp)
                 
-                # Only include opportunities with meaningful edges
-                quality_opps = [opp for opp in all_game_opps if opp['betting_edge'] >= 3.0]
+                # Only include opportunities with meaningful edges (lowered threshold)
+                quality_opps = [opp for opp in all_game_opps if opp['betting_edge'] >= 2.0]
                 opportunities.extend(quality_opps)
+                
+                # Debug output
+                print(f"Game {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}: {len(all_game_opps)} total, {len(quality_opps)} quality opportunities")
                         
             except Exception as e:
-                logger.error(f"Error analyzing betting opportunities for game: {e}")
+                print(f"Error analyzing betting opportunities for game: {e}")
                 continue
         
         # Sort by confidence score and edge combined
@@ -92,13 +118,17 @@ class AdvancedBettingEngine:
                 batters = team_preds.get('batters', []) if isinstance(team_preds, dict) else []
                 for batter in batters:
                     if isinstance(batter, dict) and self._is_hot_streak_batter(batter):
+                        # Extract hit probability properly
+                        predictions = batter.get('predictions', {})
+                        hit_prob = predictions.get('hit_probability', 0.6)
+                        
                         opportunities.append({
                             'type': 'Hot Streak Player',
                             'category': 'Batter Prop',
                             'game': f"{game['away_team']} @ {game['home_team']}",
                             'player': batter.get('name', 'Unknown'),
                             'bet_type': '1+ Hits',
-                            'projection': f"{batter.get('hit_probability', 0.6):.1%} hit probability",
+                            'projection': f"{hit_prob:.1%} hit probability",
                             'edge_factors': ['Hot streak', 'Above season average', 'Recent form'],
                             'reasoning': self._get_hot_streak_reasoning(batter),
                             'raw_confidence': 0.8,

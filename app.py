@@ -700,14 +700,7 @@ def strike_zone_page():
 
 def betting_opportunities_page():
     st.header("💰 Advanced Betting Opportunities")
-    st.markdown("AI-powered betting analysis with edge detection and bankroll management")
-    
-    # Bankroll input
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        bankroll = st.number_input("Bankroll ($)", min_value=100, max_value=100000, value=5000, step=100)
-    with col2:
-        st.info("💡 The system uses Kelly Criterion-based sizing and risk management")
+    st.markdown("AI-powered betting analysis with advanced edge detection")
     
     # Get today's games and predictions
     with st.spinner("Analyzing betting opportunities across today's games..."):
@@ -734,35 +727,59 @@ def betting_opportunities_page():
             # Analyze betting opportunities
             all_opportunities = []
             for game_key, data in all_predictions.items():
-                game_opportunities = st.session_state.betting_engine.analyze_betting_opportunities(
-                    [data['game']], data['predictions']
-                )
-                all_opportunities.extend(game_opportunities)
+                try:
+                    # Pass the predictions dict with team player data
+                    player_predictions = {
+                        'home_players': data['predictions'].get('home_players', []),
+                        'away_players': data['predictions'].get('away_players', [])
+                    }
+                    
+                    game_opportunities = st.session_state.betting_engine.analyze_betting_opportunities(
+                        [data['game']], player_predictions
+                    )
+                    all_opportunities.extend(game_opportunities)
+                    
+                    # Debug output to see what we're getting
+                    if game_opportunities:
+                        print(f"Found {len(game_opportunities)} opportunities for {game_key}")
+                    else:
+                        print(f"No opportunities found for {game_key}")
+                        
+                except Exception as e:
+                    print(f"Error analyzing opportunities for {game_key}: {e}")
+                    continue
             
             if not all_opportunities:
                 st.warning("No profitable betting opportunities found for today's games")
                 return
             
-            # Generate comprehensive betting report
-            betting_report = st.session_state.betting_engine.generate_betting_report(all_opportunities, bankroll)
+            # Sort opportunities by edge and confidence
+            all_opportunities.sort(key=lambda x: (x.get('betting_edge', 0) * x.get('confidence_score', 0.5)), reverse=True)
             
             # Display summary metrics
             st.subheader("📊 Today's Betting Summary")
             
+            high_value_bets = len([o for o in all_opportunities if o.get('betting_edge', 0) >= 5.0])
+            medium_value_bets = len([o for o in all_opportunities if 3.0 <= o.get('betting_edge', 0) < 5.0])
+            hot_streak_bets = len([o for o in all_opportunities if o['type'] == 'Hot Streak Player'])
+            
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.metric("Total Opportunities", betting_report['summary'].get('total_opportunities', 0))
+                st.metric("Total Opportunities", len(all_opportunities))
             with col2:
-                st.metric("High Value Bets", betting_report['summary'].get('high_value_bets', 0))
+                st.metric("Hot Streak Players", hot_streak_bets)
             with col3:
-                st.metric("Recommended Risk", f"${betting_report['summary'].get('total_risk', 0):,.0f}")
+                st.metric("High Value (5%+ Edge)", high_value_bets)
             with col4:
-                st.metric("Expected ROI", betting_report['summary'].get('roi_estimate', '0%'))
+                st.metric("Medium Value (3-5% Edge)", medium_value_bets)
             
             # Top opportunities
             st.subheader("🎯 Top Betting Opportunities")
             
-            for i, opp in enumerate(betting_report['top_opportunities'][:10], 1):
+            # Add slider to control how many opportunities to show
+            num_to_show = st.slider("Number of top opportunities to display", min_value=10, max_value=50, value=25, step=5)
+            
+            for i, opp in enumerate(all_opportunities[:num_to_show], 1):
                 # Handle new data structure
                 edge = opp.get('betting_edge', opp.get('edge', 5.0))
                 confidence_score = opp.get('confidence_score', 0.6)
@@ -784,16 +801,12 @@ def betting_opportunities_page():
                     with col2:
                         st.metric("Edge", f"{edge:.1f}%")
                         st.metric("Confidence Score", f"{confidence_score:.1%}")
+                        st.metric("Units", f"{opp.get('recommended_units', 1.0):.1f}")
                         
-                        # Recommended bet size based on Kelly-like formula
-                        bet_units = min(edge * 0.1, 3.0)  # Conservative sizing
-                        bet_amount = bet_units * (bankroll * 0.01)  # 1% per unit
-                        st.metric("Recommended Bet", f"${bet_amount:.0f}")
-                        
-                        # Color code by confidence
-                        if confidence_score > 0.75:
+                        # Color code by edge and confidence
+                        if edge >= 5.0 and confidence_score > 0.75:
                             st.success("🟢 Strong Bet")
-                        elif confidence_score > 0.6:
+                        elif edge >= 3.0 and confidence_score > 0.6:
                             st.info("🟡 Medium Bet")
                         else:
                             st.warning("🟠 Low Confidence")
@@ -817,7 +830,8 @@ def betting_opportunities_page():
                     
                     # Create DataFrame for better display
                     df_data = []
-                    for opp in opps[:15]:  # Show top 15 per category
+                    max_per_category = min(len(opps), 50)  # Show up to 50 per category
+                    for opp in opps[:max_per_category]:
                         edge = opp.get('betting_edge', opp.get('edge', 5.0))
                         confidence_score = opp.get('confidence_score', 0.6)
                         confidence_text = "High" if confidence_score > 0.75 else "Medium" if confidence_score > 0.6 else "Low"
@@ -835,44 +849,6 @@ def betting_opportunities_page():
                         df = pd.DataFrame(df_data)
                         st.dataframe(df, use_container_width=True)
             
-            # Risk management section
-            st.subheader("⚠️ Risk Management")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**Bankroll Allocation:**")
-                total_risk = betting_report['summary'].get('total_risk', 0)
-                risk_pct = (total_risk / bankroll) * 100 if bankroll > 0 else 0
-                
-                st.write(f"• Total recommended risk: ${total_risk:,.0f} ({risk_pct:.1f}% of bankroll)")
-                st.write(f"• Number of recommended bets: {betting_report['summary'].get('recommended_bets', 0)}")
-                st.write(f"• Maximum single bet: ${betting_report['allocation'].get('max_single_bet', 0):,.0f}")
-                
-                if risk_pct > 15:
-                    st.error("⚠️ WARNING: Total risk exceeds 15% of bankroll")
-                elif risk_pct > 10:
-                    st.warning("⚠️ CAUTION: Moderate risk level")
-                else:
-                    st.success("✅ Conservative risk level")
-            
-            with col2:
-                st.write("**Confidence Distribution:**")
-                conf_dist = betting_report['risk_management'].get('confidence_distribution', {})
-                for conf_level, count in conf_dist.items():
-                    st.write(f"• {conf_level}: {count} opportunities")
-                
-                st.write("**Diversification:**")
-                diversification = betting_report['risk_management'].get('diversification', 0)
-                st.write(f"• Bet types covered: {diversification}")
-                
-                if diversification >= 3:
-                    st.success("✅ Well diversified")
-                elif diversification >= 2:
-                    st.info("🟡 Moderate diversification")
-                else:
-                    st.warning("⚠️ Limited diversification")
-            
             # Expert insights
             st.subheader("🧠 AI Insights & Strategy")
             
@@ -880,7 +856,7 @@ def betting_opportunities_page():
                 insights = []
                 
                 # Generate dynamic insights based on opportunities
-                high_edge_bets = [o for o in all_opportunities if o['edge'] >= 10]
+                high_edge_bets = [o for o in all_opportunities if o.get('betting_edge', 0) >= 10]
                 if high_edge_bets:
                     insights.append(f"🎯 {len(high_edge_bets)} high-edge opportunities (10%+ edge) identified")
                 
@@ -900,21 +876,25 @@ def betting_opportunities_page():
             
             with st.expander("📚 Betting Strategy Guide"):
                 st.markdown("""
-                **Kelly Criterion Sizing:**
-                - Bet size is calculated using modified Kelly Criterion
-                - Maximum 5 units per bet (5% of bankroll)
-                - Conservative approach prioritizes bankroll preservation
+                **Unit-Based Sizing:**
+                - Conservative bet sizing with maximum 3 units per opportunity
+                - Units calculated based on edge strength and confidence
+                - Focus on consistent long-term profitability
                 
                 **Edge Detection:**
-                - High Edge (10%+): Strong statistical advantage
-                - Medium Edge (5-10%): Solid value opportunity
-                - Low Edge (<5%): Marginal value, skip unless high confidence
+                - High Edge (5%+): Strong statistical advantage
+                - Medium Edge (3-5%): Solid value opportunity  
+                - Low Edge (2-3%): Marginal value, high confidence required
                 
                 **Confidence Levels:**
-                - Very High: Multiple supporting factors, 75%+ win probability
-                - High: Strong statistical edge, 65%+ win probability
-                - Medium: Moderate edge, monitor line movement
+                - High: Multiple supporting factors, strong statistical edge
+                - Medium: Solid edge with good supporting data
                 - Low: Marginal opportunity, proceed with caution
+                
+                **Key Factors:**
+                - Hot streaks: Recent performance significantly above season average
+                - Ballpark edges: Venue-specific advantages for power/strikeouts
+                - Matchup edges: Platoon advantages and style mismatches
                 """)
         
         except Exception as e:
