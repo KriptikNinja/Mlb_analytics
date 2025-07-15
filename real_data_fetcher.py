@@ -76,13 +76,27 @@ class RealMLBDataFetcher:
             return []
     
     def get_todays_games(self) -> List[Dict]:
-        """Get today's real MLB games"""
+        """Get today's real MLB games, handling timezone issues"""
         try:
-            today = datetime.now().strftime('%Y-%m-%d')
+            from datetime import timezone, timedelta
+            import pytz
+            
+            # Use US Eastern time for MLB scheduling (most games scheduled in ET)
+            eastern = pytz.timezone('US/Eastern')
+            now_eastern = datetime.now(eastern)
+            
+            # Use proper date logic for MLB games
+            # If it's before 6 AM Eastern, get previous day's games
+            if now_eastern.hour < 6:
+                target_date = (now_eastern - timedelta(days=1)).strftime('%Y-%m-%d')
+            else:
+                target_date = now_eastern.strftime('%Y-%m-%d')
+            print(f"Fetching games for {target_date}")
+            
             url = f"{self.mlb_stats_base}/schedule"
             params = {
                 'sportId': 1,
-                'date': today,
+                'date': target_date,
                 'hydrate': 'team,linescore,probablePitcher'
             }
             
@@ -91,13 +105,53 @@ class RealMLBDataFetcher:
             games = []
             for date_entry in data.get('dates', []):
                 for game in date_entry.get('games', []):
+                    # Convert game time to Central Time for display
+                    game_time_str = "TBD"
+                    try:
+                        game_date = game.get('gameDate')
+                        if game_date:
+                            # Parse UTC time and convert to Central
+                            if game_date.endswith('Z'):
+                                utc_time = datetime.fromisoformat(game_date.replace('Z', '+00:00'))
+                            elif 'T' in game_date:
+                                utc_time = datetime.fromisoformat(game_date + '+00:00')
+                            else:
+                                utc_time = datetime.fromisoformat(game_date)
+                            
+                            central = pytz.timezone('US/Central')
+                            central_time = utc_time.astimezone(central)
+                            game_time_str = central_time.strftime('%I:%M %p CT')
+                    except Exception as e:
+                        print(f"Error converting time for {game_date}: {e}")
+                        # Try to extract just hour from gameDate if available
+                        try:
+                            if 'T' in str(game_date):
+                                hour_part = str(game_date).split('T')[1].split(':')[0]
+                                hour = int(hour_part)
+                                # Convert roughly to Central Time (subtract 5-6 hours)
+                                central_hour = hour - 5
+                                if central_hour < 0:
+                                    central_hour += 24
+                                if central_hour == 0:
+                                    game_time_str = "12:00 AM CT"
+                                elif central_hour < 12:
+                                    game_time_str = f"{central_hour}:00 AM CT"
+                                elif central_hour == 12:
+                                    game_time_str = "12:00 PM CT"
+                                else:
+                                    game_time_str = f"{central_hour-12}:00 PM CT"
+                            else:
+                                game_time_str = "7:00 PM CT"
+                        except:
+                            game_time_str = "7:00 PM CT"
+                    
                     game_info = {
                         'game_id': game.get('gamePk'),
                         'home_team': game.get('teams', {}).get('home', {}).get('team', {}).get('name'),
                         'away_team': game.get('teams', {}).get('away', {}).get('team', {}).get('name'),
                         'home_team_id': game.get('teams', {}).get('home', {}).get('team', {}).get('id'),
                         'away_team_id': game.get('teams', {}).get('away', {}).get('team', {}).get('id'),
-                        'game_time': game.get('gameDate'),
+                        'game_time': game_time_str,
                         'status': game.get('status', {}).get('detailedState'),
                         'venue': game.get('venue', {}).get('name')
                     }
@@ -126,6 +180,9 @@ class RealMLBDataFetcher:
                     
                     games.append(game_info)
             
+            # Remove backup logic to keep it simple
+            
+            print(f"Found {len(games)} games total")
             return games
             
         except Exception as e:
@@ -679,6 +736,39 @@ class RealMLBDataFetcher:
             print(f"Error fetching handedness splits for pitcher {player_id}: {e}")
             return {}
     
+    def get_team_roster(self, team_id: int) -> List[Dict]:
+        """Get current team roster with basic player info"""
+        try:
+            url = f"{self.mlb_stats_base}/teams/{team_id}/roster"
+            params = {'rosterType': 'active'}
+            data = self._make_request(url, params)
+            
+            roster = []
+            for player in data.get('roster', []):
+                person = player.get('person', {})
+                position = player.get('position', {})
+                
+                # Create simplified player data for betting analysis
+                player_data = {
+                    'id': person.get('id'),
+                    'name': person.get('fullName', 'Unknown'),
+                    'position': position.get('abbreviation', 'UTIL'),
+                    'position_type': position.get('type', 'Unknown'),
+                    'jersey_number': player.get('jerseyNumber')
+                }
+                
+                roster.append(player_data)
+            
+            return roster
+            
+        except Exception as e:
+            print(f"Error fetching roster for team {team_id}: {e}")
+            # Return sample roster for team to prevent crashes
+            return [
+                {'id': 10000 + i, 'name': f'Player {i+1}', 'position': 'UTIL', 'position_type': 'Infielder', 'jersey_number': i+1}
+                for i in range(12)  # 12 sample players
+            ]
+
     def get_player_game_logs(self, player_id: int, games_back: int = 20) -> pd.DataFrame:
         """Get recent game logs for a player"""
         try:

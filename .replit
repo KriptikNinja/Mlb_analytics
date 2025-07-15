@@ -1,4 +1,4 @@
-modules = ["python-3.11"]
+modules = ["python-3.11", "postgresql-16"]
 
 [nix]
 channel = "stable-24_05"
@@ -20,14 +20,26 @@ author = "agent"
 task = "workflow.run"
 args = "MLB Analytics App"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Historical Data Collection"
+
 [[workflows.workflow]]
 name = "MLB Analytics App"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "streamlit run app.py --server.port 5000"
+args = "streamlit run app.py --server.port 5000 --server.headless true --server.address 0.0.0.0"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Historical Data Collection"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python data_collection_script.py"
 
 [[ports]]
 localPort = 5000

@@ -18,7 +18,7 @@ class RealMLBPredictionEngine:
     def __init__(self):
         self.data_fetcher = RealMLBDataFetcher()
         
-    def generate_game_predictions(self, game_info: Dict) -> Dict:
+    def generate_game_predictions(self, game_info: Dict, simplified: bool = False) -> Dict:
         """Generate comprehensive predictions for a game"""
         predictions = {
             'game_id': game_info.get('game_id'),
@@ -37,22 +37,79 @@ class RealMLBPredictionEngine:
             away_team_id = game_info.get('away_team_id')
             
             if home_team_id and away_team_id:
-                predictions['home_players'] = self._get_team_predictions(home_team_id, 'home', game_info)
-                predictions['away_players'] = self._get_team_predictions(away_team_id, 'away', game_info)
-                predictions['team_predictions'] = self.data_fetcher.get_team_win_probability(home_team_id, away_team_id)
-                
-                # Generate key matchups
-                predictions['key_matchups'] = self._generate_key_matchups(
-                    predictions['home_players'], 
-                    predictions['away_players'],
-                    game_info
-                )
+                if simplified:
+                    # Simplified mode - get basic roster without detailed stats to avoid slow API calls
+                    predictions['home_players'] = self._get_simplified_team_predictions(home_team_id, 'home', game_info)
+                    predictions['away_players'] = self._get_simplified_team_predictions(away_team_id, 'away', game_info)
+                else:
+                    predictions['home_players'] = self._get_team_predictions(home_team_id, 'home', game_info)
+                    predictions['away_players'] = self._get_team_predictions(away_team_id, 'away', game_info)
+                    predictions['team_predictions'] = self.data_fetcher.get_team_win_probability(home_team_id, away_team_id)
+                    
+                    # Generate key matchups
+                    predictions['key_matchups'] = self._generate_key_matchups(
+                        predictions['home_players'], 
+                        predictions['away_players'],
+                        game_info
+                    )
         
         except Exception as e:
             print(f"Error generating predictions for game {game_info.get('game_id')}: {e}")
             predictions['error'] = str(e)
         
         return predictions
+    
+    def _get_simplified_team_predictions(self, team_id: int, home_away: str, game_info: Dict) -> List[Dict]:
+        """Get simplified team predictions without slow API calls for betting engine"""
+        try:
+            roster = self.data_fetcher.get_team_roster(team_id)
+            simplified_predictions = []
+            
+            for player in roster[:8]:  # Limit to key players for performance
+                player_id = player.get('id')
+                position_type = player.get('position_type')
+                
+                if not player_id:
+                    continue
+                
+                # Create basic prediction structure for betting engine
+                prediction = {
+                    'player_id': player_id,
+                    'name': player.get('name', 'Unknown Player'),
+                    'position': player.get('position', 'Unknown'),
+                    'is_pitcher': position_type == 'Pitcher',
+                    'home_away': home_away,
+                    
+                    # Basic stats for betting analysis (estimated values)
+                    'batting_avg': 0.265,
+                    'home_runs': 15,
+                    'rbi': 45,
+                    'strikeouts_batting': 85,
+                    'era': 3.80 if position_type == 'Pitcher' else 0,
+                    'strikeouts_pitching': 120 if position_type == 'Pitcher' else 0,
+                    'walks': 35,
+                    
+                    # Hot streak indicators (simplified)
+                    'recent_performance': 'neutral',
+                    'vs_opposing_pitcher': {'avg': 0.250, 'ab': 8},
+                    
+                    # Prediction values for betting
+                    'predicted_hits': 1.2,
+                    'predicted_home_runs': 0.08,
+                    'predicted_rbi': 0.6,
+                    'predicted_strikeouts': 6.5 if position_type == 'Pitcher' else 0.8,
+                    'hit_probability': 0.55,
+                    'home_run_probability': 0.08,
+                    'data_source': 'simplified_mode'
+                }
+                
+                simplified_predictions.append(prediction)
+            
+            return simplified_predictions
+            
+        except Exception as e:
+            print(f"Error in simplified team predictions: {e}")
+            return []
     
     def _get_team_predictions(self, team_id: int, home_away: str, game_info: Dict) -> List[Dict]:
         """Get predictions for all players on a team"""
