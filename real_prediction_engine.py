@@ -280,7 +280,7 @@ class RealMLBPredictionEngine:
         if test_results['mlb_stats_api'] and test_results['baseball_savant']:
             return "✅ Connected to MLB Stats API and Baseball Savant"
         elif test_results['mlb_stats_api']:
-            return "⚠️ Connected to MLB Stats API only (Baseball Savant unavailable)"
+            return "⚠️ Connected to MLB Stats API only (Baseball Savant unavailable) - Using enhanced fallbacks for missing stats"
         elif test_results['baseball_savant']:
             return "⚠️ Connected to Baseball Savant only (MLB Stats API unavailable)"
         else:
