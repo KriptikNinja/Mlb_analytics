@@ -215,12 +215,17 @@ class MLBDataFetcher:
         return pd.DataFrame(data)
     
     def get_games_for_date(self, game_date: datetime.date) -> List[Dict]:
-        """Get real games for today from MLB Stats API"""
-        if game_date == datetime.now().date():
-            # Get real data for today
-            real_games = self.real_data_fetcher.get_todays_games()
+        """Get real games for specified date from MLB Stats API"""
+        try:
+            # Convert date to datetime for API call
+            date_obj = datetime.combine(game_date, datetime.min.time())
+            
+            # Get real data for any date
+            real_games = self.real_data_fetcher.get_games_for_date(date_obj)
             if real_games:
                 return real_games
+        except Exception as e:
+            print(f"Error fetching games from API for {game_date}: {e}")
         
         # Fallback to database for other dates
         return self.db_manager.get_games_for_date(game_date)

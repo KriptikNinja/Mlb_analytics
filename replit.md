@@ -126,6 +126,31 @@ The application follows a modular architecture with clear separation of concerns
 
 The application is designed to be modular, maintainable, and extensible, with clear separation between data fetching, analytics processing, machine learning, and visualization components.
 
+## Version History
+
+### V2.0 - Complete Date Selection & UI Enhancement (July 18, 2025) 🔐 LOCKED
+
+**MAJOR FEATURE RELEASE:**
+- **Universal Date Selection**: Added Yesterday/Today/Tomorrow dropdown to all three pages
+  - Today's Games & Predictions: Full date navigation with dynamic headers
+  - Betting Opportunities: Game selection with date-aware dropdowns  
+  - Strike Zone Analysis: Complete date selection integration
+- **Enhanced Game Display**: Numerical date format (MM/DD) before all game times
+  - Professional sports betting standard format: "07/18 1:20 PM CT"
+  - Consistent across all pages and game listings
+  - Clear visual distinction between different dates
+- **Technical Improvements**: 
+  - Fixed critical NameError preventing Betting Opportunities page loading
+  - Updated all game fetching functions to use date parameters
+  - Enhanced API integration with proper date handling
+  - Improved error handling with graceful fallbacks
+
+**USER EXPERIENCE ENHANCEMENTS:**
+- Seamless switching between past, present, and future game analysis
+- Clear contextual headers showing selected date
+- Professional date/time display matching industry standards
+- Enhanced navigation with preserved functionality across date changes
+
 ## Recent Updates (July 2025)
 
 ### CRITICAL FIX (July 13, 2025) - COMPLETED ✅

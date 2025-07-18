@@ -60,6 +60,18 @@ def get_prediction_engine():
 def get_betting_engine():
     return AdvancedBettingEngine()
 
+def get_date_options():
+    """Get date options for dropdown selection"""
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)
+    tomorrow = today + timedelta(days=1)
+    
+    return {
+        "Yesterday": yesterday.strftime("%Y-%m-%d"),
+        "Today": today.strftime("%Y-%m-%d"),
+        "Tomorrow": tomorrow.strftime("%Y-%m-%d")
+    }
+
 # Lazy initialization
 if 'initialized' not in st.session_state:
     st.session_state.initialized = True
@@ -86,7 +98,17 @@ def main():
         strike_zone_page()
 
 def daily_matchups_page():
-    st.header("📅 Today's Real MLB Games & Predictions")
+    st.header("📅 MLB Games & Predictions")
+    
+    # Date selection dropdown
+    date_options = get_date_options()
+    selected_date_label = st.selectbox(
+        "Select Game Date:",
+        options=list(date_options.keys()),
+        index=1,  # Default to "Today"
+        key="daily_matchups_date_select"
+    )
+    selected_date = date_options[selected_date_label]
     
     # Get engines lazily
     prediction_engine = get_prediction_engine()
@@ -98,12 +120,14 @@ def daily_matchups_page():
     except Exception as e:
         st.markdown("**Data Source:** ⚠️ API connection issues - using sample data")
     
-    # Get today's games
-    with st.spinner("Loading real MLB games from MLB Stats API..."):
-        games = prediction_engine.data_fetcher.get_todays_games()
+    # Get games for selected date
+    with st.spinner(f"Loading real MLB games from MLB Stats API for {selected_date_label.lower()}..."):
+        from datetime import datetime
+        date_obj = datetime.strptime(selected_date, "%Y-%m-%d").date()
+        games = prediction_engine.data_fetcher.get_games_for_date(date_obj)
     
     if not games:
-        st.warning("No MLB games scheduled for today. Check your internet connection.")
+        st.warning(f"No MLB games scheduled for {selected_date_label.lower()}. Check your internet connection or try another date.")
         st.info("This app connects to MLB Stats API (statsapi.mlb.com) and Baseball Savant for real data.")
         return
     
@@ -126,14 +150,22 @@ def daily_matchups_page():
     else:
         actual_game_date = datetime.now().date()
     
-    st.subheader(f"Real Games for {actual_game_date.strftime('%B %d, %Y')} - {len(games)} games")
+    st.subheader(f"Real Games for {selected_date_label} ({len(games)} games)")
     
     # Display each game with real predictions
     for i, game in enumerate(games):
         game_title = f"🏟️ {game['away_team']} @ {game['home_team']}"
         if game.get('game_time'):
-            # Game time is already converted to Central Time in the data fetcher
-            game_title += f" ({game['game_time']})"
+            # Add numerical date before game time
+            from datetime import datetime
+            try:
+                # Parse the selected date to get MM/DD format
+                date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
+                date_display = date_obj.strftime("%m/%d")
+                game_title += f" ({date_display} {game['game_time']})"
+            except:
+                # Fallback to just game time if date parsing fails
+                game_title += f" ({game['game_time']})"
         
         # Add venue info if available
         if game.get('venue'):
@@ -593,18 +625,26 @@ def hot_cold_streaks_page():
 def strike_zone_page():
     st.header("🎯 Strike Zone Analysis")
     
-    # Get today's games and real player data
-    today = datetime.now().date()
-    games = st.session_state.real_prediction_engine.data_fetcher.get_todays_games()
+    # Date selection dropdown
+    date_options = get_date_options()
+    selected_date_label = st.selectbox(
+        "Select Game Date:",
+        options=list(date_options.keys()),
+        index=1,  # Default to "Today"
+        key="strike_zone_date_select"
+    )
+    selected_date = date_options[selected_date_label]
+    
+    # Get games for selected date
+    from datetime import datetime
+    date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
+    games = st.session_state.real_prediction_engine.data_fetcher.get_games_for_date(date_obj)
     
     if not games:
-        st.warning("No games scheduled today. Using recent games for analysis.")
-        # Get sample games for analysis
-        from datetime import timedelta
-        yesterday = today - timedelta(days=1)
-        games = st.session_state.real_prediction_engine.data_fetcher.get_todays_games()
+        st.warning(f"No games scheduled for {selected_date_label.lower()}. Please try another date.")
+        return
     
-    st.subheader("Today's Matchups")
+    st.subheader(f"{selected_date_label}'s Matchups")
     
     # Collect real players from today's games
     all_batters = []
@@ -612,7 +652,14 @@ def strike_zone_page():
     
     # Display games and get player predictions
     for game in games:
-        st.write(f"**{game['away_team']} @ {game['home_team']}** - {game.get('game_time', 'TBD')}")
+        # Add numerical date before game time
+        game_time = game.get('game_time', 'TBD')
+        try:
+            date_display = date_obj.strftime("%m/%d")
+            st.write(f"**{game['away_team']} @ {game['home_team']}** - {date_display} {game_time}")
+        except:
+            # Fallback without date if parsing fails
+            st.write(f"**{game['away_team']} @ {game['home_team']}** - {game_time}")
         
         try:
             # Get real team predictions with actual players
@@ -741,6 +788,16 @@ def betting_opportunities_page():
     st.header("💰 Advanced Betting Opportunities")
     st.markdown("AI-powered betting analysis with advanced edge detection")
     
+    # Date selection dropdown
+    date_options = get_date_options()
+    selected_date_label = st.selectbox(
+        "Select Game Date:",
+        options=list(date_options.keys()),
+        index=1,  # Default to "Today"
+        key="betting_date_select"
+    )
+    selected_date = date_options[selected_date_label]
+    
     # Add custom CSS for better text wrapping and display
     st.markdown("""
     <style>
@@ -774,28 +831,33 @@ def betting_opportunities_page():
         # Show initialization status
         st.success("✅ Data-driven betting engine loaded with comprehensive prop analysis")
     
-    # Get all games for dropdown selection - NO CACHING to force fresh data
-    def get_todays_games():
-        """Get today's games for dropdown selection"""
+    # Get games for selected date - NO CACHING to force fresh data
+    def get_games_for_date(date_str):
+        """Get games for selected date"""
         try:
             # Ensure prediction engine is initialized
             if 'real_prediction_engine' not in st.session_state:
                 st.session_state.real_prediction_engine = get_prediction_engine()
             
-            games = st.session_state.real_prediction_engine.data_fetcher.get_todays_games()
-            print(f"DEBUG: get_todays_games() returned {len(games) if games else 0} games")
+            # Convert date string to datetime for API call
+            from datetime import datetime
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            
+            # Use the data fetcher with the selected date
+            games = st.session_state.real_prediction_engine.data_fetcher.get_games_for_date(date_obj)
+            print(f"DEBUG: get_games_for_date({date_str}) returned {len(games) if games else 0} games")
             return games if games else []
         except Exception as e:
-            print(f"Error fetching games: {e}")
+            print(f"Error fetching games for {date_str}: {e}")
             import traceback
             traceback.print_exc()
             return []
     
     # Analyze single game opportunities - NO CACHING to use updated betting engine
-    def get_single_game_opportunities(game_index: int):
+    def get_single_game_opportunities(game_index: int, date_str: str):
         """Get betting opportunities for a single selected game"""
         try:
-            games = get_todays_games()
+            games = get_games_for_date(date_str)
             if not games or game_index >= len(games):
                 return None, []
             
@@ -927,46 +989,30 @@ def betting_opportunities_page():
             traceback.print_exc()
             return None, []
     
-    # Get available games for dropdown
-    available_games = get_todays_games()
+    # This section has been moved up to after date selection
+    
+    # Get games for selected date
+    available_games = get_games_for_date(selected_date)
     
     if not available_games:
-        st.warning("No MLB games found for today")
-        st.info("Debug: Checking data fetcher...")
-        
-        # Debug information
-        try:
-            if hasattr(st.session_state, 'real_prediction_engine'):
-                st.write("✅ Prediction engine exists")
-                if hasattr(st.session_state.real_prediction_engine, 'data_fetcher'):
-                    st.write("✅ Data fetcher exists")
-                    from datetime import datetime
-                    today = datetime.now().date()
-                    st.write(f"📅 Trying to fetch games for: {today}")
-                    
-                    # Try direct fetch
-                    games = st.session_state.real_prediction_engine.data_fetcher.get_games_for_date(today)
-                    st.write(f"🎲 Direct fetch result: {len(games) if games else 0} games")
-                    
-                    if games:
-                        st.write("Games found:")
-                        for i, game in enumerate(games[:3]):
-                            st.write(f"  {i+1}. {game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')}")
-                else:
-                    st.error("❌ Data fetcher not found")
-            else:
-                st.error("❌ Prediction engine not found in session state")
-        except Exception as e:
-            st.error(f"Debug error: {e}")
+        st.warning(f"No games found for {selected_date_label.lower()}. Please check back later.")
         return
     
     # Create game selection dropdown
-    st.subheader("🎯 Select Game for Betting Analysis")
+    st.subheader(f"🎯 Select Game for Betting Analysis ({selected_date_label})")
     
     game_options = []
     for i, game in enumerate(available_games):
         game_time = game.get('game_time', 'TBD')
-        game_options.append(f"{game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')} ({game_time})")
+        # Add numerical date before game time
+        try:
+            from datetime import datetime
+            date_obj = datetime.strptime(selected_date, "%Y-%m-%d")
+            date_display = date_obj.strftime("%m/%d")
+            game_options.append(f"{game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')} ({date_display} {game_time})")
+        except:
+            # Fallback without date if parsing fails
+            game_options.append(f"{game.get('away_team', 'Away')} @ {game.get('home_team', 'Home')} ({game_time})")
     
     selected_game_idx = st.selectbox(
         "Choose a game to analyze:",
@@ -977,7 +1023,7 @@ def betting_opportunities_page():
     
     # Get opportunities for selected game
     with st.spinner(f"Analyzing betting opportunities for {game_options[selected_game_idx]}..."):
-        games, all_opportunities = get_single_game_opportunities(selected_game_idx)
+        games, all_opportunities = get_single_game_opportunities(selected_game_idx, selected_date)
     
         if games is None:
             st.warning("Unable to load game data")
@@ -1131,7 +1177,7 @@ def betting_opportunities_page():
                                 reasoning = opp.get('reasoning', 'Strong betting opportunity based on current form and matchup analysis.')
                                 st.markdown(f"**🎯 Zone Analysis:**")
                                 # Show full reasoning with proper text wrapping
-                                st.text_area("", value=reasoning, height=80, disabled=True, key=f"reasoning_{i}_{category_name}")
+                                st.text_area("Zone Analysis", value=reasoning, height=80, disabled=True, key=f"reasoning_{i}_{category_name}", label_visibility="hidden")
                                 
                                 # Show edge factors
                                 edge_factors = opp.get('edge_factors', [])

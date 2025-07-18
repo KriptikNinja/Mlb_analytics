@@ -75,6 +75,20 @@ class RealMLBDataFetcher:
             print(f"Error fetching teams: {e}")
             return []
     
+    def get_games_for_date(self, game_date: datetime) -> List[Dict]:
+        """Get MLB games for a specific date"""
+        try:
+            import pytz
+            
+            # Format the date for API call
+            target_date = game_date.strftime('%Y-%m-%d')
+            print(f"Fetching games for {target_date}")
+            
+            return self._fetch_games_for_date(target_date)
+        except Exception as e:
+            print(f"Error fetching games for {game_date}: {e}")
+            return []
+    
     def get_todays_games(self) -> List[Dict]:
         """Get today's real MLB games, handling timezone issues"""
         try:
@@ -92,6 +106,96 @@ class RealMLBDataFetcher:
             else:
                 target_date = now_eastern.strftime('%Y-%m-%d')
             print(f"Fetching games for {target_date}")
+            
+            return self._fetch_games_for_date(target_date)
+        except Exception as e:
+            print(f"Error fetching today's games: {e}")
+            return []
+    
+    def _fetch_games_for_date(self, target_date: str) -> List[Dict]:
+        """Fetch games for a specific date string"""
+        try:
+            import pytz
+            
+            url = f"{self.mlb_stats_base}/schedule"
+            params = {
+                'sportId': 1,
+                'date': target_date,
+                'hydrate': 'team,linescore,probablePitcher'
+            }
+            
+            data = self._make_request(url, params)
+            
+            games = []
+            for date_entry in data.get('dates', []):
+                for game in date_entry.get('games', []):
+                    # Convert game time to Central Time for display
+                    game_time_str = "TBD"
+                    try:
+                        game_date = game.get('gameDate')
+                        if game_date:
+                            # Parse UTC time and convert to Central
+                            if game_date.endswith('Z'):
+                                utc_time = datetime.fromisoformat(game_date.replace('Z', '+00:00'))
+                            elif 'T' in game_date:
+                                utc_time = datetime.fromisoformat(game_date + '+00:00')
+                            else:
+                                utc_time = datetime.fromisoformat(game_date)
+                            
+                            central = pytz.timezone('US/Central')
+                            central_time = utc_time.astimezone(central)
+                            game_time_str = central_time.strftime('%I:%M %p CT')
+                    except Exception as e:
+                        print(f"Error converting time for {game_date}: {e}")
+                        game_time_str = "TBD"
+                    
+                    game_info = {
+                        'game_id': game.get('gamePk'),
+                        'away_team': game.get('teams', {}).get('away', {}).get('team', {}).get('name'),
+                        'home_team': game.get('teams', {}).get('home', {}).get('team', {}).get('name'),
+                        'away_team_id': game.get('teams', {}).get('away', {}).get('team', {}).get('id'),
+                        'home_team_id': game.get('teams', {}).get('home', {}).get('team', {}).get('id'),
+                        'game_time': game_time_str,
+                        'game_date': game.get('gameDate'),
+                        'status': game.get('status', {}).get('detailedState'),
+                        'venue': game.get('venue', {}).get('name')
+                    }
+                    
+                    # Add probable pitchers
+                    home_pitcher = game.get('teams', {}).get('home', {}).get('probablePitcher')
+                    away_pitcher = game.get('teams', {}).get('away', {}).get('probablePitcher')
+                    
+                    if home_pitcher:
+                        game_info['home_pitcher'] = {
+                            'id': home_pitcher.get('id'),
+                            'name': home_pitcher.get('fullName')
+                        }
+                    
+                    if away_pitcher:
+                        game_info['away_pitcher'] = {
+                            'id': away_pitcher.get('id'),
+                            'name': away_pitcher.get('fullName')
+                        }
+                    
+                    # Add weather data if available
+                    game_info['weather'] = self._get_weather_data(game_info['venue'])
+                    
+                    # Add ballpark factor data
+                    game_info['ballpark_factors'] = self._get_ballpark_factors(game_info['venue'])
+                    
+                    games.append(game_info)
+            
+            print(f"Found {len(games)} games total")
+            return games
+            
+        except Exception as e:
+            print(f"Error fetching games for date {target_date}: {e}")
+            return []
+    
+    def _fetch_games_for_date(self, target_date: str) -> List[Dict]:
+        """Fetch games for a specific date string"""
+        try:
+            import pytz
             
             url = f"{self.mlb_stats_base}/schedule"
             params = {
