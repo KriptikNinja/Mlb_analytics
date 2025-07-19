@@ -1,10 +1,11 @@
 """
 Authentication module for MLB Analytics App
-Provides simple username/password protection
+Provides simple username/password protection with mobile-friendly persistent sessions
 """
 import streamlit as st
 import hashlib
 import os
+import time
 from config import AUTH_CONFIG
 
 class SimpleAuth:
@@ -17,6 +18,8 @@ class SimpleAuth:
             self.users[username] = self._hash_password(password)
         
         self.auth_enabled = AUTH_CONFIG.get("require_auth", True)
+        # Mobile-friendly session timeout: 8 hours (28800 seconds)
+        self.session_timeout = 28800
     
     def _hash_password(self, password: str) -> str:
         """Hash password using SHA-256"""
@@ -40,12 +43,16 @@ class SimpleAuth:
             
             if submit_button:
                 if self.authenticate(username, password):
+                    # Store authentication with timestamp for mobile persistence
+                    current_time = time.time()
                     st.session_state['authenticated'] = True
                     st.session_state['username'] = username
-                    st.success("Login successful! Redirecting...")
+                    st.session_state['login_time'] = current_time
+                    st.session_state['last_activity'] = current_time
+                    st.success("✅ Login successful! Session will stay active for 8 hours.")
                     st.rerun()
                 else:
-                    st.error("Invalid username or password")
+                    st.error("❌ Invalid username or password")
         
 
     
@@ -57,8 +64,23 @@ class SimpleAuth:
             st.rerun()
     
     def is_authenticated(self) -> bool:
-        """Check if user is authenticated"""
-        return st.session_state.get('authenticated', False)
+        """Check if user is authenticated with session timeout handling"""
+        if not st.session_state.get('authenticated', False):
+            return False
+            
+        # Check session timeout for mobile-friendly experience
+        current_time = time.time()
+        last_activity = st.session_state.get('last_activity', 0)
+        
+        if current_time - last_activity > self.session_timeout:
+            # Session expired
+            st.session_state['authenticated'] = False
+            st.session_state['username'] = None
+            return False
+            
+        # Update last activity time
+        st.session_state['last_activity'] = current_time
+        return True
     
     def get_username(self) -> str:
         """Get current username"""

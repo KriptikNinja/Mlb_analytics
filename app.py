@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import pytz
 from typing import Dict, List
 import warnings
+import random
 warnings.filterwarnings('ignore')
 
 # Import custom modules with try-catch for faster startup
@@ -175,7 +176,7 @@ def daily_matchups_page():
         expanded = i < 3
         with st.expander(game_title, expanded=expanded):
             with st.spinner("Generating real predictions from MLB data..."):
-                game_predictions = prediction_engine.generate_game_predictions(game)
+                game_predictions = prediction_engine.generate_game_predictions(game, simplified=False)
             
             # Starting Pitchers
             if game.get('home_pitcher') or game.get('away_pitcher'):
@@ -276,9 +277,11 @@ def display_real_team_predictions(players: List[Dict], home_away: str):
                 bats = handedness.get('bats', 'R')
                 st.write(f"**{name}** ({bats}) - {position}")
             with col2:
+                # Use authentic hit probability from full predictions
                 hit_prob = predictions.get('hit_probability', 0)
                 st.write(f"Hit: {hit_prob:.1%}")
             with col3:
+                # Use authentic HR probability from full predictions
                 hr_prob = predictions.get('home_run_probability', 0)
                 st.write(f"HR: {hr_prob:.1%}")
             
@@ -291,19 +294,22 @@ def display_real_team_predictions(players: List[Dict], home_away: str):
                 else:
                     st.success(f"🔥 {name} is hot!")
             
-            # Show season stats if available
+            # Show authentic season stats - no estimates or fake data
+            season_stats = batter.get('season_stats', {})
             if season_stats:
                 avg = season_stats.get('avg', 0)
                 hr = season_stats.get('homeRuns', 0)
+                slg = season_stats.get('slg', 0)
                 if avg or hr:
                     try:
                         avg_float = float(avg) if avg else 0.0
                         hr_int = int(hr) if hr else 0
-                        st.caption(f"Season: {avg_float:.3f} AVG, {hr_int} HR")
+                        slg_float = float(slg) if slg else 0.0
+                        st.caption(f"Season: {avg_float:.3f} AVG, {hr_int} HR, {slg_float:.3f} SLG")
                     except (ValueError, TypeError):
-                        st.caption(f"Season: {avg} AVG, {hr} HR")
+                        st.caption(f"Season: {avg} AVG, {hr} HR, {slg} SLG")
             
-            # Display batter vs pitcher history if available
+            # Display authentic batter vs pitcher history if available
             matchup_history = predictions.get('matchup_history', {})
             if matchup_history and matchup_history.get('at_bats', 0) > 0:
                 ab = matchup_history['at_bats']
@@ -324,32 +330,23 @@ def display_real_team_predictions(players: List[Dict], home_away: str):
         throws = handedness.get('throws', 'R')
         st.write(f"**{name}** ({throws}) - Starting Pitcher")
         
-        # Pitching predictions in columns
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            k_proj = predictions.get('predicted_strikeouts', 0)
-            st.write(f"**K's:** {k_proj:.1f}")
-        with col2:
-            bb_proj = predictions.get('predicted_walks', 0)
-            st.write(f"**BB's:** {bb_proj:.1f}")
-        with col3:
-            era_proj = predictions.get('predicted_era', 0)
-            st.write(f"**ERA:** {era_proj:.2f}")
-        with col4:
-            er_proj = predictions.get('predicted_earned_runs', 0)
-            st.write(f"**ER:** {er_proj:.1f}")
+        # Show season stats instead of predictions
+        if season_stats:
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                era = season_stats.get('era', 0)
+                st.write(f"**Season ERA:** {era:.2f}")
+            with col2:
+                whip = season_stats.get('whip', 0)
+                st.write(f"**WHIP:** {whip:.2f}")
+            with col3:
+                k9 = season_stats.get('strikeoutsPerNine', 0)
+                st.write(f"**K/9:** {k9:.1f}")
+            with col4:
+                bb9 = season_stats.get('walksPer9Inn', 0)
+                st.write(f"**BB/9:** {bb9:.1f}")
         
-        # Additional pitcher stats
-        col1, col2 = st.columns(2)
-        with col1:
-            hits_proj = predictions.get('predicted_hits_allowed', 0)
-            st.write(f"**Hits Allowed:** {hits_proj:.1f}")
-        with col2:
-            whip_proj = predictions.get('predicted_whip', 0)
-            if whip_proj > 0:
-                st.write(f"**WHIP:** {whip_proj:.2f}")
-        
-        # Show vs handedness splits (simplified to avoid API errors)
+        # Show authentic vs handedness splits
         vs_handedness = predictions.get('vs_handedness', {})
         if vs_handedness:
             st.markdown("**vs Left/Right Splits:**")
@@ -365,7 +362,7 @@ def display_real_team_predictions(players: List[Dict], home_away: str):
                     avg_vs_r = right_splits.get('avg_against', '.000')
                     st.write(f"**vs RHB:** {avg_vs_r} AVG")
         
-        # Last 5 starts
+        # Show authentic last 5 starts data only
         last_5_starts = predictions.get('last_5_starts', [])
         if last_5_starts:
             st.markdown("**📊 Last 5 Starts:**")
@@ -425,9 +422,9 @@ def generate_team_predictions(team_name: str, home_away: str) -> Dict:
             batter_pred = {
                 'name': batter['player_name'],
                 'current_avg': batter.get('batting_avg', 0.250),
-                'predicted_avg': min(0.450, max(0.150, batter.get('batting_avg', 0.250) + np.random.normal(0, 0.020))),
-                'hr_probability': min(0.15, max(0.01, np.random.beta(2, 20))),
-                'hit_probability': min(0.45, max(0.15, batter.get('batting_avg', 0.250) + np.random.normal(0, 0.030))),
+                'predicted_avg': batter.get('batting_avg', 0.250),  # Use actual average
+                'hr_probability': 0.0,  # Disabled fake probability
+                'hit_probability': batter.get('batting_avg', 0.250),  # Use actual average
                 'streak_status': determine_streak_status(batter, 'batting_avg')
             }
             predictions['batters'].append(batter_pred)
@@ -437,17 +434,17 @@ def generate_team_predictions(team_name: str, home_away: str) -> Dict:
             pitcher_pred = {
                 'name': pitcher['player_name'],
                 'current_era': pitcher.get('era', 4.00),
-                'predicted_era': min(8.00, max(1.00, pitcher.get('era', 4.00) + np.random.normal(0, 0.200))),
-                'strikeout_probability': min(0.35, max(0.10, np.random.beta(8, 12))),
-                'quality_start_probability': min(0.70, max(0.20, np.random.beta(6, 4))),
+                'predicted_era': pitcher.get('era', 4.00),  # Use actual ERA
+                'strikeout_probability': 0.0,  # Disabled fake probability
+                'quality_start_probability': 0.0,  # Disabled fake probability
                 'streak_status': determine_streak_status(pitcher, 'era')
             }
             predictions['pitchers'].append(pitcher_pred)
         
         # Team-level predictions
         predictions['team_stats'] = {
-            'predicted_runs': max(0, np.random.poisson(4.5)),
-            'win_probability': 0.5 + (0.1 if home_away == 'home' else 0) + np.random.normal(0, 0.15)
+            'predicted_runs': 0,  # Disabled fake prediction
+            'win_probability': 0.5 + (0.1 if home_away == 'home' else 0)  # Basic home field advantage only
         }
         predictions['team_stats']['win_probability'] = min(0.85, max(0.15, predictions['team_stats']['win_probability']))
         
@@ -580,11 +577,11 @@ def hot_cold_streaks_page():
                     team_data = pd.DataFrame({
                         'player_name': [f"Player_{i}" for i in range(1, 16)],
                         'player_type': ['batter']*9 + ['pitcher']*6,
-                        'batting_avg': [0.250 + np.random.normal(0, 0.050) for _ in range(9)] + [0]*6,
-                        'home_runs': [15 + np.random.randint(-5, 10) for _ in range(9)] + [0]*6,
-                        'rbis': [45 + np.random.randint(-15, 20) for _ in range(9)] + [0]*6,
-                        'era': [0]*9 + [4.0 + np.random.normal(0, 1.0) for _ in range(6)],
-                        'whip': [0]*9 + [1.3 + np.random.normal(0, 0.2) for _ in range(6)]
+                        'batting_avg': [0.250] * 9 + [0]*6,  # Use fixed average instead of random
+                        'home_runs': [15] * 9 + [0]*6,  # Fixed values instead of random
+                        'rbis': [45] * 9 + [0]*6,  # Fixed values instead of random
+                        'era': [0]*9 + [4.0] * 6,  # Fixed values instead of random
+                        'whip': [0]*9 + [1.3] * 6  # Fixed values instead of random
                     })
                 
                 # Analyze streaks
@@ -667,7 +664,7 @@ def strike_zone_page():
             home_team_id = game.get('home_team_id', 0)
             
             # Get today's predictions which include real MLB players
-            predictions = st.session_state.real_prediction_engine.generate_game_predictions(game)
+            predictions = st.session_state.real_prediction_engine.generate_game_predictions(game, simplified=False)
             
             # Extract batters and pitchers from predictions
             for team_name in ['away_team', 'home_team']:
@@ -798,15 +795,66 @@ def betting_opportunities_page():
     )
     selected_date = date_options[selected_date_label]
     
-    # Add custom CSS for better text wrapping and display
+    # Enhanced mobile-optimized CSS for betting opportunities page
     st.markdown("""
     <style>
+    /* Mobile-first responsive design */
+    @media (max-width: 768px) {
+        .stDataFrame {
+            font-size: 11px;
+            overflow-x: auto;
+        }
+        .stDataFrame table {
+            min-width: 100%;
+            font-size: 10px;
+        }
+        .stDataFrame td {
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            max-width: 150px;
+            padding: 4px;
+        }
+        div[data-testid="metric-container"] {
+            font-size: 11px;
+            padding: 6px;
+            margin: 3px 0;
+        }
+        div[data-testid="metric-container"] > div {
+            font-size: 11px;
+        }
+        .stMarkdown {
+            font-size: 12px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            white-space: normal;
+        }
+        .streamlit-expanderContent {
+            padding: 6px;
+            font-size: 12px;
+        }
+        .stColumn {
+            padding: 1px;
+        }
+        /* Force text wrapping in containers */
+        .element-container {
+            word-wrap: break-word;
+            white-space: normal;
+        }
+        /* Better mobile card styling */
+        div[data-testid="container"] {
+            word-wrap: break-word;
+            white-space: normal;
+        }
+    }
+    
+    /* Universal text wrapping improvements */
     .streamlit-expanderContent {
-        white-space: normal;
-        word-wrap: break-word;
+        white-space: normal !important;
+        word-wrap: break-word !important;
     }
     .stDataFrame {
         word-wrap: break-word;
+        overflow-x: auto;
     }
     div[data-testid="metric-container"] {
         background-color: #f0f2f6;
@@ -814,18 +862,40 @@ def betting_opportunities_page():
         padding: 5px;
         border-radius: 5px;
         margin: 2px;
+        word-wrap: break-word;
+        white-space: normal;
     }
     .stMarkdown {
+        word-wrap: break-word !important;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+    }
+    
+    /* Responsive table improvements */
+    .dataframe {
+        width: 100% !important;
+        font-size: 12px;
+    }
+    
+    /* Better mobile expander styling */
+    details[data-testid="expander"] {
+        border: 1px solid #e6e6e6;
+        border-radius: 4px;
+        margin: 4px 0;
+    }
+    
+    /* Force proper text wrapping everywhere */
+    * {
         word-wrap: break-word;
-        white-space: pre-wrap;
+        overflow-wrap: break-word;
     }
     </style>
     """, unsafe_allow_html=True)
     
     # Load simple, working betting engine
     if 'betting_engine_v4' not in st.session_state:
-        from simple_betting_engine import SimpleBettingEngine
-        st.session_state.betting_engine = SimpleBettingEngine()
+        from clean_betting_engine import AuthenticBettingEngine
+        st.session_state.betting_engine = AuthenticBettingEngine()
         st.session_state.betting_engine_v4 = True
         
         # Show initialization status
@@ -863,105 +933,12 @@ def betting_opportunities_page():
             
             game = games[game_index]
             
-            # Generate full predictions (not simplified) for better opportunities
-            predictions = st.session_state.real_prediction_engine.generate_game_predictions(game, simplified=False)
+            # Generate simplified predictions with authentic data for betting opportunities
+            predictions = st.session_state.real_prediction_engine.generate_game_predictions(game, simplified=True)
             
-            # CRITICAL FIX: Add realistic stat variation before betting analysis
+            # Use actual MLB predictions without fake data generation
             home_players = predictions.get('home_players', [])
             away_players = predictions.get('away_players', [])
-            
-            # Apply realistic batting averages AND PROPER BATTING ORDER
-            batting_order_home = 1
-            batting_order_away = 1
-            
-            for player in home_players:
-                player_name = player.get('name', '').lower()
-                
-                # Assign proper batting order for home team
-                if player.get('player_type') == 'batter':
-                    player['batting_order'] = batting_order_home
-                    batting_order_home += 1
-                
-                # ELITE HITTERS - Known superstars
-                if any(star in player_name for star in ['aaron judge', 'mookie betts', 'juan soto', 'freddie freeman', 'vladimir guerrero']):
-                    player['avg'] = np.random.uniform(0.295, 0.335)  # Elite range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.08, 0.12)
-                    print(f"ELITE: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                    
-                # GREAT HITTERS - All-Stars
-                elif any(good in player_name for good in ['alex bregman', 'kyle tucker', 'cody bellinger', 'anthony volpe', 'giancarlo stanton']):
-                    player['avg'] = np.random.uniform(0.270, 0.305)  # Good range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.06, 0.09)
-                    print(f"GOOD: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                    
-                # AVERAGE HITTERS - Everyday players
-                elif any(avg in player_name for avg in ['dansby swanson', 'ian happ', 'nico hoerner', 'ben rice']):
-                    player['avg'] = np.random.uniform(0.255, 0.285)  # Average range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.04, 0.07)
-                    print(f"AVERAGE: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                    
-                # BENCH/UTILITY PLAYERS - Lower production
-                else:
-                    player['avg'] = np.random.uniform(0.235, 0.270)  # Below average range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.03, 0.06)
-                    print(f"BENCH: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                
-                # Update related predictions based on new average with DATA-DRIVEN metrics
-                new_avg = player['avg']
-                player['predictions']['predicted_hit_prob'] = min(0.85, new_avg + 0.15)
-                player['predictions']['predicted_hr_prob'] = player['predictions']['hr_rate'] + 0.02
-                player['predictions']['recent_avg'] = new_avg * np.random.uniform(0.85, 1.15)
-                player['predictions']['recent_performance'] = np.random.uniform(0.85, 1.25)
-                
-                # Add advanced metrics for data-driven analysis
-                player['predictions']['obp'] = min(0.450, new_avg + np.random.uniform(0.040, 0.080))
-                player['predictions']['slg'] = min(0.650, new_avg + np.random.uniform(0.120, 0.200))
-                player['predictions']['ops'] = player['predictions']['obp'] + player['predictions']['slg']
-            
-            # Apply to away team players
-            for player in away_players:
-                player_name = player.get('name', '').lower()
-                
-                # Assign proper batting order for away team
-                if player.get('player_type') == 'batter':
-                    player['batting_order'] = batting_order_away
-                    batting_order_away += 1
-                
-                # ELITE HITTERS - Known superstars
-                if any(star in player_name for star in ['aaron judge', 'mookie betts', 'juan soto', 'freddie freeman', 'vladimir guerrero']):
-                    player['avg'] = np.random.uniform(0.295, 0.335)  # Elite range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.08, 0.12)
-                    print(f"ELITE: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                    
-                # GREAT HITTERS - All-Stars
-                elif any(good in player_name for good in ['alex bregman', 'kyle tucker', 'cody bellinger', 'anthony volpe', 'giancarlo stanton']):
-                    player['avg'] = np.random.uniform(0.270, 0.305)  # Good range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.06, 0.09)
-                    print(f"GOOD: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                    
-                # AVERAGE HITTERS - Everyday players
-                elif any(avg in player_name for avg in ['dansby swanson', 'ian happ', 'nico hoerner', 'ben rice']):
-                    player['avg'] = np.random.uniform(0.255, 0.285)  # Average range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.04, 0.07)
-                    print(f"AVERAGE: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                    
-                # BENCH/UTILITY PLAYERS - Lower production
-                else:
-                    player['avg'] = np.random.uniform(0.235, 0.270)  # Below average range
-                    player['predictions']['hr_rate'] = np.random.uniform(0.03, 0.06)
-                    print(f"BENCH: {player.get('name')} = {player['avg']:.3f} avg, batting {player.get('batting_order', 'N/A')}")
-                
-                # Update related predictions based on new average with DATA-DRIVEN metrics
-                new_avg = player['avg']
-                player['predictions']['predicted_hit_prob'] = min(0.85, new_avg + 0.15)
-                player['predictions']['predicted_hr_prob'] = player['predictions']['hr_rate'] + 0.02
-                player['predictions']['recent_avg'] = new_avg * np.random.uniform(0.85, 1.15)
-                player['predictions']['recent_performance'] = np.random.uniform(0.85, 1.25)
-                
-                # Add advanced metrics for data-driven analysis
-                player['predictions']['obp'] = min(0.450, new_avg + np.random.uniform(0.040, 0.080))
-                player['predictions']['slg'] = min(0.650, new_avg + np.random.uniform(0.120, 0.200))
-                player['predictions']['ops'] = player['predictions']['obp'] + player['predictions']['slg']
             
             # Analyze betting opportunities with REALISTIC stats
             player_predictions = {
@@ -1033,10 +1010,12 @@ def betting_opportunities_page():
             st.info("No profitable betting opportunities found for this game")
             return
     
-    # Display summary metrics
+    # Display summary metrics with mobile-responsive layout
     st.subheader("📊 Today's Betting Summary")
     
-    col1, col2, col3, col4 = st.columns(4)
+    # Use 2x2 grid on mobile, 4 columns on desktop
+    col1, col2 = st.columns(2)
+    col3, col4 = st.columns(2)
     
     total_opportunities = len(all_opportunities)
     high_value_bets = len([opp for opp in all_opportunities if opp.get('betting_edge', 0) >= 5.0])
@@ -1106,29 +1085,19 @@ def betting_opportunities_page():
             })
         
         if df_data:
-            df = pd.DataFrame(df_data)
-            # Use HTML table for better text wrapping
-            st.markdown("### Quick Overview")
+            # Mobile-responsive display - use cards for better mobile experience
             
-            # Create HTML table with proper text wrapping
-            html_table = "<table style='width: 100%; border-collapse: collapse;'>"
-            html_table += "<thead><tr style='background-color: #f0f2f6;'>"
-            html_table += "<th style='padding: 8px; border: 1px solid #ddd; width: 20%;'>Player</th>"
-            html_table += "<th style='padding: 8px; border: 1px solid #ddd; width: 20%;'>Bet Type</th>"
-            html_table += "<th style='padding: 8px; border: 1px solid #ddd; width: 10%;'>Edge %</th>"
-            html_table += "<th style='padding: 8px; border: 1px solid #ddd; width: 50%;'>Zone Analysis</th>"
-            html_table += "</tr></thead><tbody>"
-            
-            for row in df_data:
-                html_table += "<tr>"
-                html_table += f"<td style='padding: 8px; border: 1px solid #ddd; word-wrap: break-word;'>{row['Player']}</td>"
-                html_table += f"<td style='padding: 8px; border: 1px solid #ddd; word-wrap: break-word;'>{row['Bet Type']}</td>"
-                html_table += f"<td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>{row['Edge %']}</td>"
-                html_table += f"<td style='padding: 8px; border: 1px solid #ddd; word-wrap: break-word; white-space: normal;'>{row['Zone Analysis']}</td>"
-                html_table += "</tr>"
-            
-            html_table += "</tbody></table>"
-            st.markdown(html_table, unsafe_allow_html=True)
+            # Mobile-optimized card layout with full text display
+            for i, row in enumerate(df_data[:10], 1):  # Show top 10 for quick view
+                with st.container():
+                    # Single column layout for better mobile experience
+                    st.markdown(f"**#{i} {row['Player']}** • {row['Bet Type']} • **{row['Edge %']}**")
+                    
+                    # Full analysis text without truncation in expandable format
+                    with st.expander(f"📊 Analysis Details", expanded=False):
+                        st.write(row['Zone Analysis'])
+                    
+                    st.markdown("---")
             
         # Reorganize by bet category for better presentation
         bet_categories = {
@@ -1161,133 +1130,40 @@ def betting_opportunities_page():
                         edge = opp.get('betting_edge', 3.0)
                         confidence_score = opp.get('confidence_score', 0.6)
                         
-                        # Enhanced card display with better wrapping
+                        # Mobile-optimized card display 
                         with st.container():
-                            col1, col2 = st.columns([1, 1])
+                            # Single column layout for better mobile experience
+                            st.markdown(f"**#{i} {opp.get('player', 'Player')}** - {opp.get('bet_type', 'Unknown Bet')}")
+                            
+                            col1, col2 = st.columns([2, 1])
                             
                             with col1:
-                                # Player and bet info
-                                st.markdown(f"**#{i} {opp.get('player', 'Player')}**")
-                                st.markdown(f"*{opp.get('bet_type', 'Bet')}*")
-                                st.markdown(f"📊 {opp.get('projection', 'N/A')}")
-                                st.metric("Edge", f"{edge:.1f}%", delta=None)
-                                
+                                # Full reasoning without truncation for mobile
+                                reasoning = opp.get('reasoning', 'No analysis available')
+                                # Use text_area for better mobile text display
+                                st.text_area(
+                                    label="Analysis",
+                                    value=reasoning,
+                                    height=68,
+                                    disabled=True,
+                                    key=f"mobile_reasoning_{i}_{category_name}",
+                                    label_visibility="hidden"
+                                )
+                            
                             with col2:
-                                # Zone Analysis with full text
-                                reasoning = opp.get('reasoning', 'Strong betting opportunity based on current form and matchup analysis.')
-                                st.markdown(f"**🎯 Zone Analysis:**")
-                                # Show full reasoning with proper text wrapping
-                                st.text_area("Zone Analysis", value=reasoning, height=80, disabled=True, key=f"reasoning_{i}_{category_name}", label_visibility="hidden")
-                                
-                                # Show edge factors
-                                edge_factors = opp.get('edge_factors', [])
-                                if edge_factors:
-                                    st.markdown(f"**⚡ Advantage Zones:**")
-                                    for factor in edge_factors:
-                                        st.markdown(f"• {factor}")
+                                st.metric("Edge", f"{edge:.1f}%")
                                 
                                 # Quality indicator
                                 if edge >= 5.0 and confidence_score > 0.75:
-                                    st.success("Strong")
+                                    st.success("🔥 Strong")
                                 elif edge >= 3.0:
-                                    st.info("Medium")
+                                    st.info("⚡ Medium")
                                 else:
-                                    st.warning("Value")
-                            
-                            # Edge factors as badges
-                            if 'edge_factors' in opp and opp['edge_factors']:
-                                factor_cols = st.columns(len(opp['edge_factors']))
-                                for factor_col, factor in zip(factor_cols, opp['edge_factors']):
-                                    with factor_col:
-                                        st.markdown(f"<span style='background-color: #e8f4fd; padding: 2px 6px; border-radius: 10px; font-size: 12px;'>{factor}</span>", unsafe_allow_html=True)
+                                    st.warning("💡 Value")
                             
                             st.divider()
-            
-            # Detailed breakdown by category
-            st.subheader("📈 Opportunities by Category")
-            
-            # Group opportunities by type
-            opportunities_by_type = {}
-            for opp in all_opportunities:
-                opp_type = opp['type']
-                if opp_type not in opportunities_by_type:
-                    opportunities_by_type[opp_type] = []
-                opportunities_by_type[opp_type].append(opp)
-            
-            tabs = st.tabs(list(opportunities_by_type.keys()))
-            
-            for tab, (opp_type, opps) in zip(tabs, opportunities_by_type.items()):
-                with tab:
-                    st.write(f"**{len(opps)} {opp_type} opportunities found**")
-                    
-                    # Create DataFrame for better display
-                    df_data = []
-                    max_per_category = min(len(opps), 50)  # Show up to 50 per category
-                    for opp in opps[:max_per_category]:
-                        edge = opp.get('betting_edge', opp.get('edge', 5.0))
-                        confidence_score = opp.get('confidence_score', 0.6)
-                        confidence_text = "High" if confidence_score > 0.75 else "Medium" if confidence_score > 0.6 else "Low"
-                        
-                        df_data.append({
-                            'Player': opp.get('player', 'Game Total'),
-                            'Bet': opp.get('bet_type', opp.get('bet', 'Unknown')),
-                            'Edge %': f"{edge:.1f}%",
-                            'Confidence': confidence_text,
-                            'Category': opp.get('category', 'General'),
-                            'Reasoning': opp['reasoning'][:50] + "..." if len(opp['reasoning']) > 50 else opp['reasoning']
-                        })
-                    
-                    if df_data:
-                        df = pd.DataFrame(df_data)
-                        st.dataframe(df, use_container_width=True)
-            
-            # Expert insights
-            st.subheader("🧠 AI Insights & Strategy")
-            
-            with st.expander("💡 Today's Key Insights"):
-                insights = []
-                
-                # Generate dynamic insights based on opportunities
-                high_edge_bets = [o for o in all_opportunities if o.get('betting_edge', 0) >= 10]
-                if high_edge_bets:
-                    insights.append(f"🎯 {len(high_edge_bets)} high-edge opportunities (10%+ edge) identified")
-                
-                player_props = [o for o in all_opportunities if o['type'] == 'Hits Prop']
-                if len(player_props) >= 5:
-                    insights.append(f"🏏 Strong player prop market today with {len(player_props)} opportunities")
-                
-                total_bets = [o for o in all_opportunities if o['type'] == 'Total Runs']
-                if len(total_bets) >= 3:
-                    insights.append(f"🎲 Multiple total runs opportunities suggest weather/ballpark edges")
-                
-                if not insights:
-                    insights = ["📊 Market appears efficient today - focus on highest confidence plays"]
-                
-                for insight in insights:
-                    st.info(insight)
-            
-            with st.expander("📚 Betting Strategy Guide"):
-                st.markdown("""
-                **Unit-Based Sizing:**
-                - Conservative bet sizing with maximum 3 units per opportunity
-                - Units calculated based on edge strength and confidence
-                - Focus on consistent long-term profitability
-                
-                **Edge Detection:**
-                - High Edge (5%+): Strong statistical advantage
-                - Medium Edge (3-5%): Solid value opportunity  
-                - Low Edge (2-3%): Marginal value, high confidence required
-                
-                **Confidence Levels:**
-                - High: Multiple supporting factors, strong statistical edge
-                - Medium: Solid edge with good supporting data
-                - Low: Marginal opportunity, proceed with caution
-                
-                **Key Factors:**
-                - Hot streaks: Recent performance significantly above season average
-                - Ballpark edges: Venue-specific advantages for power/strikeouts
-                - Matchup edges: Platoon advantages and style mismatches
-                """)
+    else:
+        st.warning("No betting opportunities found for the selected game.")
 
 
 if __name__ == "__main__":

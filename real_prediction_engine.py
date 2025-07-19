@@ -44,7 +44,17 @@ class RealMLBPredictionEngine:
                 else:
                     predictions['home_players'] = self._get_team_predictions(home_team_id, 'home', game_info)
                     predictions['away_players'] = self._get_team_predictions(away_team_id, 'away', game_info)
-                    predictions['team_predictions'] = self.data_fetcher.get_team_win_probability(home_team_id, away_team_id)
+                    
+                    # Calculate realistic win probabilities based on team performance
+                    home_win_prob = self._calculate_team_win_probability(predictions['home_players'], predictions['away_players'], True)
+                    away_win_prob = 1.0 - home_win_prob
+                    
+                    predictions['home_win_probability'] = home_win_prob
+                    predictions['away_win_probability'] = away_win_prob
+                    predictions['team_predictions'] = {
+                        'home_win_probability': home_win_prob,
+                        'away_win_probability': away_win_prob
+                    }
                     
                     # Generate key matchups
                     predictions['key_matchups'] = self._generate_key_matchups(
@@ -65,42 +75,67 @@ class RealMLBPredictionEngine:
             roster = self.data_fetcher.get_team_roster(team_id)
             simplified_predictions = []
             
-            for player in roster[:8]:  # Limit to key players for performance
+            for player in roster[:12]:  # Get more players for betting
                 player_id = player.get('id')
                 position_type = player.get('position_type')
                 
                 if not player_id:
+                    print(f"⚠️ Skipping player {player.get('name', 'Unknown')} - no ID")
                     continue
                 
-                # Create basic prediction structure for betting engine
+                # Get actual stats from data fetcher - skip if no authentic data
+                stats = self.data_fetcher.get_player_season_stats(player_id)
+                if not stats or not stats.get('avg') or stats.get('data_source') in ['fallback', 'error', 'none']:
+                    print(f"❌ EXCLUDING {player.get('name', 'Unknown')} (ID: {player_id}) - no authentic MLB data")
+                    continue
+                
+                # Skip recent stats for now to avoid missing method error
+                recent_stats = {}
+                
+                # Debug actual API data
+                print(f"✅ AUTHENTIC DATA for {player.get('name', 'Unknown')} (ID: {player_id}): {stats.get('data_source', 'no_source')} - AVG: {stats.get('avg', 'missing')}")
+                # Create proper structure for betting engine
                 prediction = {
+                    'id': player_id,
                     'player_id': player_id,
                     'name': player.get('name', 'Unknown Player'),
                     'position': player.get('position', 'Unknown'),
-                    'is_pitcher': position_type == 'Pitcher',
-                    'home_away': home_away,
+                    'player_type': 'batter' if position_type != 'Pitcher' else 'pitcher',
+                    'team_id': team_id,
+                    'batting_order': len(simplified_predictions) + 1,
                     
-                    # Basic stats for betting analysis (estimated values)
-                    'batting_avg': 0.265,
-                    'home_runs': 15,
-                    'rbi': 45,
-                    'strikeouts_batting': 85,
-                    'era': 3.80 if position_type == 'Pitcher' else 0,
-                    'strikeouts_pitching': 120 if position_type == 'Pitcher' else 0,
-                    'walks': 35,
+                    # Add season_stats structure for betting engine
+                    'season_stats': {
+                        'avg': stats.get('avg'),
+                        'obp': stats.get('obp'),
+                        'slg': stats.get('slg'),
+                        'homeRuns': stats.get('homeRuns'),
+                        'rbi': stats.get('rbi'),
+                        'data_source': 'mlb_api_authentic'
+                    },
                     
-                    # Hot streak indicators (simplified)
-                    'recent_performance': 'neutral',
-                    'vs_opposing_pitcher': {'avg': 0.250, 'ab': 8},
+                    # ONLY authentic MLB API stats - skip player if no real data
+                    'avg': float(stats.get('avg', 0)) if stats.get('avg') else 0,
+                    'obp': float(stats.get('obp', 0)) if stats.get('obp') else 0,
+                    'slg': float(stats.get('slg', 0)) if stats.get('slg') else 0,
+                    'ops': (float(stats.get('obp', 0)) + float(stats.get('slg', 0))) if stats.get('obp') and stats.get('slg') else 0,
+                    'era': float(stats.get('era', 0)) if position_type == 'Pitcher' and stats.get('era') else 0,
+                    'whip': float(stats.get('whip', 0)) if position_type == 'Pitcher' and stats.get('whip') else 0,
+                    'k_9': float(stats.get('strikeoutsPerNine', 0)) if position_type == 'Pitcher' and stats.get('strikeoutsPerNine') else 0,
                     
-                    # Prediction values for betting
-                    'predicted_hits': 1.2,
-                    'predicted_home_runs': 0.08,
-                    'predicted_rbi': 0.6,
-                    'predicted_strikeouts': 6.5 if position_type == 'Pitcher' else 0.8,
-                    'hit_probability': 0.55,
-                    'home_run_probability': 0.08,
-                    'data_source': 'simplified_mode'
+                    # Predictions structure with authentic data only - add proper pitcher stats
+                    'predictions': {
+                        'obp': float(stats.get('obp', 0)) if stats.get('obp') else 0,
+                        'slg': float(stats.get('slg', 0)) if stats.get('slg') else 0,
+                        'hr_rate': float(stats.get('homeRuns', 0)) / max(float(stats.get('atBats', 1)), 1) if stats.get('homeRuns') and stats.get('atBats') else 0,
+                        'recent_performance': float(recent_stats.get('avg', 0)) / float(stats.get('avg', 1)) if recent_stats.get('avg') and stats.get('avg', 0) > 0 else 1.0,
+                        # Add pitcher predictions
+                        'strikeouts': float(stats.get('strikeoutsPerNine', 0)) * 5.5 / 9 if position_type == 'Pitcher' and stats.get('strikeoutsPerNine') else None,
+                        'era': float(stats.get('era', 0)) if position_type == 'Pitcher' and stats.get('era') else None,
+                        'walks': float(stats.get('walksPer9Inn', 0)) * 5.5 / 9 if position_type == 'Pitcher' and stats.get('walksPer9Inn') else None,
+                        'strikeout_probability': float(stats.get('strikeoutsPerNine', 0)) / 27 if position_type == 'Pitcher' and stats.get('strikeoutsPerNine') else None
+                    },
+                    'data_source': 'MLB_API_authentic'
                 }
                 
                 simplified_predictions.append(prediction)
@@ -268,6 +303,49 @@ class RealMLBPredictionEngine:
             insights.append("Unable to generate matchup insights - check data connection")
         
         return insights[:6]  # Return top 6 insights
+    
+    def _calculate_team_win_probability(self, home_players: List[Dict], away_players: List[Dict], is_home: bool) -> float:
+        """Calculate realistic win probability based on team performance"""
+        try:
+            # Get offensive performance for each team
+            home_ops = []
+            away_ops = []
+            
+            for player in home_players:
+                if player.get('player_type') == 'batter' and player.get('ops', 0) > 0:
+                    home_ops.append(player['ops'])
+            
+            for player in away_players:
+                if player.get('player_type') == 'batter' and player.get('ops', 0) > 0:
+                    away_ops.append(player['ops'])
+            
+            # Calculate team offensive strength
+            home_offense = np.mean(home_ops[:9]) if home_ops else 0.700  # League average
+            away_offense = np.mean(away_ops[:9]) if away_ops else 0.700
+            
+            # Get starting pitcher ERAs
+            home_pitchers = [p for p in home_players if p.get('player_type') == 'pitcher' and p.get('era', 0) > 0]
+            away_pitchers = [p for p in away_players if p.get('player_type') == 'pitcher' and p.get('era', 0) > 0]
+            
+            home_pitcher_era = home_pitchers[0]['era'] if home_pitchers else 4.20
+            away_pitcher_era = away_pitchers[0]['era'] if away_pitchers else 4.20
+            
+            # Calculate performance differential
+            offensive_diff = (home_offense - away_offense) * 0.3  # Scale factor
+            pitching_diff = (away_pitcher_era - home_pitcher_era) * 0.05  # Lower ERA is better
+            
+            # Base probability with home field advantage
+            home_field_advantage = 0.54 if is_home else 0.46
+            
+            # Apply performance adjustments
+            win_prob = home_field_advantage + offensive_diff + pitching_diff
+            
+            # Keep within realistic bounds
+            return max(0.25, min(0.75, win_prob))
+            
+        except Exception as e:
+            print(f"Error calculating win probability: {e}")
+            return 0.54 if is_home else 0.46  # Default with home field advantage
     
     def test_data_sources(self) -> Dict:
         """Test connectivity to real data sources"""

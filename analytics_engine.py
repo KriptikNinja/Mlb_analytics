@@ -185,39 +185,11 @@ class AnalyticsEngine:
             great_matchups = []
             
             for game in games:
-                # Generate sample lineups for each team
-                home_batters = [f"Batter_{i}" for i in range(1, 10)]
-                away_batters = [f"Batter_{i}" for i in range(10, 19)]
-                home_pitchers = [f"Pitcher_H1", f"Pitcher_H2"]
-                away_pitchers = [f"Pitcher_A1", f"Pitcher_A2"]
-                
-                # Analyze all possible matchups
-                for batter in home_batters + away_batters:
-                    for pitcher in home_pitchers + away_pitchers:
-                        # Generate matchup analysis
-                        matchup_score = np.random.beta(2, 2)  # Realistic distribution
-                        confidence = np.random.uniform(0.5, 0.9)
-                        
-                        if confidence >= min_confidence and matchup_score > 0.65:
-                            # Generate synthetic matchup data
-                            great_matchups.append({
-                                'game': f"{game['away_team']} @ {game['home_team']}",
-                                'batter': batter,
-                                'pitcher': pitcher,
-                                'score': matchup_score,
-                                'confidence': confidence,
-                                'batter_stats': {
-                                    'Recent BA': f"{np.random.uniform(0.280, 0.350):.3f}",
-                                    'Last 10 HR': np.random.randint(2, 8),
-                                    'vs RHP': f"{np.random.uniform(0.260, 0.320):.3f}"
-                                },
-                                'pitcher_stats': {
-                                    'Recent ERA': f"{np.random.uniform(3.50, 5.20):.2f}",
-                                    'WHIP': f"{np.random.uniform(1.10, 1.45):.2f}",
-                                    'vs LHB': f"{np.random.uniform(0.240, 0.290):.3f}"
-                                },
-                                'reasoning': self._generate_matchup_reasoning(matchup_score, confidence)
-                            })
+                # DISABLED: Fake matchup generation
+                # This was generating completely synthetic lineups and stats
+                # Need to integrate real MLB roster data instead
+                print("⚠️  Advanced matchup analysis disabled - requires authentic roster data")
+                continue
             
             # Sort by score and confidence
             great_matchups.sort(key=lambda x: (x['score'], x['confidence']), reverse=True)
@@ -251,7 +223,7 @@ class AnalyticsEngine:
             "recent form strongly favors batter"
         ]
         
-        reasons.append(np.random.choice(context_reasons))
+        reasons.append(context_reasons[0] if context_reasons else "Standard analysis")
         
         return "Strong matchup due to " + ", ".join(reasons)
     

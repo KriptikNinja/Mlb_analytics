@@ -226,52 +226,30 @@ class StrikeZoneAnalyzer:
             return {}
     
     def analyze_exit_velocity_zones(self, batter_name: str) -> np.ndarray:
-        """Analyze exit velocity by strike zone"""
-        # Generate realistic exit velocity data by zone (mph)
-        exit_velo_data = np.array([
-            [88.5, 91.2, 89.8],  # Top row
-            [93.4, 95.1, 92.7],  # Middle row  
-            [87.9, 90.3, 88.6]   # Bottom row
-        ])
+        """DISABLED: Analyze exit velocity by strike zone - was using fake data"""
+        # Previous implementation used hardcoded fake exit velocity values
+        # User correctly identified this as inauthentic data
+        print(f"⚠️  Exit velocity zone analysis disabled for {batter_name}")
+        print("   Reason: Previous data was fabricated, not from Baseball Savant")
         
-        # Add some randomness based on player name hash
-        player_seed = hash(batter_name) % 100
-        np.random.seed(player_seed)
-        noise = np.random.normal(0, 2.5, (3, 3))
-        
-        return np.clip(exit_velo_data + noise, 75, 115)
+        # Return zeros instead of fake data
+        return np.zeros((3, 3))
     
     def analyze_launch_angle_zones(self, batter_name: str) -> np.ndarray:
-        """Analyze launch angle by strike zone"""
-        # Generate realistic launch angle data (degrees)
-        launch_angle_data = np.array([
-            [25.2, 18.5, 22.1],  # Top row - higher angles
-            [12.8, 15.3, 14.7],  # Middle row - line drives
-            [8.4, 11.2, 9.8]     # Bottom row - ground balls
-        ])
+        """DISABLED: Analyze launch angle by strike zone - was using fake data"""
+        print(f"⚠️  Launch angle zone analysis disabled for {batter_name}")
+        print("   Reason: Previous data was fabricated, not from authentic Statcast records")
         
-        # Add some randomness based on player name hash
-        player_seed = hash(batter_name) % 100
-        np.random.seed(player_seed)
-        noise = np.random.normal(0, 3.0, (3, 3))
-        
-        return np.clip(launch_angle_data + noise, -15, 45)
+        # Return zeros instead of fake data
+        return np.zeros((3, 3))
     
     def analyze_hard_hit_zones(self, batter_name: str) -> np.ndarray:
-        """Analyze hard hit rate by strike zone"""
-        # Generate realistic hard hit rate data (percentage)
-        hard_hit_data = np.array([
-            [0.35, 0.42, 0.38],  # Top row
-            [0.48, 0.52, 0.45],  # Middle row (sweet spot)
-            [0.33, 0.39, 0.36]   # Bottom row
-        ])
+        """DISABLED: Analyze hard hit rate by strike zone - was using fake data"""
+        print(f"⚠️  Hard hit rate zone analysis disabled for {batter_name}")
+        print("   Reason: Previous data was fabricated, not from authentic Statcast records")
         
-        # Add some randomness based on player name hash
-        player_seed = hash(batter_name) % 100
-        np.random.seed(player_seed)
-        noise = np.random.normal(0, 0.05, (3, 3))
-        
-        return np.clip(hard_hit_data + noise, 0.15, 0.75)
+        # Return zeros instead of fake data
+        return np.zeros((3, 3))
     
     def analyze_batted_ball_zones(self, batter_name: str) -> np.ndarray:
         """Analyze batted ball distribution by strike zone"""

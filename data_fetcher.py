@@ -50,6 +50,10 @@ class MLBDataFetcher:
             return [team['name'] for team in real_teams]
         return self.db_manager.get_teams()
     
+    def get_team_roster(self, team_id: int) -> List[Dict]:
+        """Get team roster from real data fetcher"""
+        return self.real_data_fetcher.get_team_roster(team_id)
+    
     def search_player(self, player_name: str) -> List[Dict]:
         """Search for players by name"""
         try:
